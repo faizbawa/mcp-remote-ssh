@@ -6,6 +6,10 @@
 
 MCP server giving AI agents full SSH access -- persistent sessions, structured command output, SFTP file transfer, and port forwarding. Works with any SSH server on any platform.
 
+## Why this exists
+
+Every other SSH MCP server is missing something: no password auth, no persistent sessions, no SFTP, no port forwarding, or no structured exit codes. This one has all of them.
+
 ## Installation
 
 ```bash
