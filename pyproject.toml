@@ -1,0 +1,61 @@
+[project]
+name = "mcp-remote-ssh"
+version = "0.1.0"
+description = "MCP server for remote SSH operations -- persistent sessions, structured command execution, SFTP file transfer, and port forwarding for AI agents."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+keywords = ["mcp", "ssh", "remote", "sftp", "paramiko", "ai", "model-context-protocol", "cursor", "claude"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Networking",
+    "Topic :: System :: Systems Administration",
+]
+dependencies = [
+    "fastmcp>=3.0,<4",
+    "paramiko>=3.4",
+    "click>=8.0",
+    "loguru>=0.7",
+]
+
+[[project.authors]]
+name = "Mohammadfaiz Bawa"
+
+[project.urls]
+Homepage = "https://github.com/faizbawa/mcp-remote-ssh"
+Repository = "https://github.com/faizbawa/mcp-remote-ssh"
+Issues = "https://github.com/faizbawa/mcp-remote-ssh/issues"
+Changelog = "https://github.com/faizbawa/mcp-remote-ssh/blob/main/CHANGELOG.md"
+
+[project.scripts]
+mcp-remote-ssh = "mcp_remote_ssh:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0",
+    "pytest-asyncio>=1.0",
+    "pytest-cov>=7.0",
+    "pytest-mock>=3.15",
+]
+
+[tool.uv]
+package = true
+
+[tool.ruff]
+line-length = 120
+indent-width = 4
+
+lint.select = ["E", "F", "B", "W", "I", "N", "UP", "S", "BLE", "C4", "EM", "ISC"]
+lint.ignore = ["EM102"]
+lint.fixable = ["ALL"]
+lint.per-file-ignores."tests/**/*.py" = ["S101", "S106"]
+
+format.quote-style = "single"
+format.indent-style = "space"
