@@ -100,16 +100,6 @@ Built on **[Paramiko](https://www.paramiko.org/)** (SSH) + **[FastMCP](https://g
 - All blocking Paramiko calls run in `run_in_executor` to stay async
 - Shell keeps a 500KB rolling buffer for `shell_read` polling
 
-## Development
-
-```bash
-git clone https://github.com/faizbawa/mcp-remote-ssh.git
-cd mcp-remote-ssh
-uv sync --group dev
-uv run ruff check src/
-uv run pytest tests/ -v
-```
-
 ## License
 
 MIT
