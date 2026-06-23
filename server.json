@@ -1,0 +1,25 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.faizbawa/mcp-remote-ssh",
+  "title": "Remote SSH",
+  "description": "MCP server giving AI agents full SSH access — persistent sessions, structured command output, SFTP file transfer, port forwarding, and secret-safe environment variable injection with automatic output redaction.",
+  "websiteUrl": "https://github.com/faizbawa/mcp-remote-ssh",
+  "repository": {
+    "url": "https://github.com/faizbawa/mcp-remote-ssh",
+    "source": "github"
+  },
+  "version": "0.3.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "mcp-remote-ssh",
+      "version": "0.3.0",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": []
+    }
+  ]
+}
