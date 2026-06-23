@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 (2026-06-23)
+
+### Fixes
+
+- Added explicit `License :: OSI Approved :: MIT License` classifier for proper PyPI metadata display
+
 ## 0.2.0 (2026-06-23)
 
 ### Features
