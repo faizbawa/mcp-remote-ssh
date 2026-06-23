@@ -1,6 +1,6 @@
 [project]
 name = "mcp-remote-ssh"
-version = "0.1.0"
+version = "0.2.0"
 description = "MCP server for remote SSH operations -- persistent sessions, structured command execution, SFTP file transfer, and port forwarding for AI agents."
 readme = "README.md"
 license = "MIT"
