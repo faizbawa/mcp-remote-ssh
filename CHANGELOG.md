@@ -1,10 +1,22 @@
 # Changelog
 
+## 0.3.0 (2026-06-23)
+
+### Features
+
+- **Zero process-tree exposure for `ssh_execute`** -- secrets are now fed via stdin to a bash wrapper instead of being prepended to the command string; they never appear in `/proc/*/cmdline` or `ps aux`
+- Both `ssh_execute` and `ssh_sudo_execute` now have full process-tree protection when secrets are loaded
+
+### Improvements
+
+- When no secrets are loaded, `ssh_execute` runs commands directly (no wrapper overhead)
+
 ## 0.2.2 (2026-06-23)
 
 ### Fixes
 
 - Removed `License :: OSI Approved :: MIT License` classifier that conflicts with PEP 639 `license` field — PyPI reads license from `license = "MIT"` directly
+- Bumped GitHub Actions to Node.js 24 compatible versions
 
 ## 0.2.1 (2026-06-23)
 

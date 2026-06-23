@@ -11,16 +11,15 @@ from mcp_remote_ssh.server import mcp
 from mcp_remote_ssh.server.helpers import get_session, require_connected
 
 
-def _build_env_prefix(session) -> str:
-    """Build an env export prefix from loaded secrets for exec channels.
-    Uses env var assignment syntax that doesn't appear in /proc/*/cmdline
-    since the whole thing runs under a single 'bash -c' invocation."""
+def _build_env_script(session) -> str:
+    """Build export statements for secrets, to be fed via stdin.
+    Never appears in /proc/*/cmdline."""
     if not session._secrets:
         return ''
-    parts = []
+    lines = []
     for key, value in session._secrets.items():
-        parts.append(f'export {key}={shlex.quote(value)}')
-    return ' && '.join(parts) + ' && '
+        lines.append(f'export {key}={shlex.quote(value)}')
+    return '\n'.join(lines) + '\n'
 
 
 @mcp.tool()
@@ -48,13 +47,18 @@ async def ssh_execute(
     session = get_session(ctx, session_id)
     require_connected(session)
 
-    env_prefix = _build_env_prefix(session)
-    full_command = env_prefix + command
-
+    env_script = _build_env_script(session)
     loop = asyncio.get_running_loop()
 
     def _exec() -> dict[str, Any]:
-        _, stdout_ch, stderr_ch = session.client.exec_command(full_command, timeout=timeout)
+        if env_script:
+            # Feed secrets via stdin so they never appear in /proc/*/cmdline
+            script = env_script + f'exec bash -c {shlex.quote(command)}\n'
+            stdin_ch, stdout_ch, stderr_ch = session.client.exec_command('bash', timeout=timeout)
+            stdin_ch.write(script)
+            stdin_ch.channel.shutdown_write()
+        else:
+            _, stdout_ch, stderr_ch = session.client.exec_command(command, timeout=timeout)
         stdout = stdout_ch.read().decode(errors='replace')
         stderr = stderr_ch.read().decode(errors='replace')
         exit_code = stdout_ch.channel.recv_exit_status()
@@ -93,17 +97,23 @@ async def ssh_sudo_execute(
     session = get_session(ctx, session_id)
     require_connected(session)
 
-    env_prefix = _build_env_prefix(session)
+    env_script = _build_env_script(session)
 
     if sudo_password:
-        wrapped = f'{env_prefix}echo {_shell_quote(sudo_password)} | sudo -S {command}'
+        actual_cmd = f'echo {_shell_quote(sudo_password)} | sudo -SE {command}'
     else:
-        wrapped = f'{env_prefix}sudo -E {command}'
+        actual_cmd = f'sudo -E {command}'
 
     loop = asyncio.get_running_loop()
 
     def _exec() -> dict[str, Any]:
-        _, stdout_ch, stderr_ch = session.client.exec_command(wrapped, timeout=timeout)
+        if env_script:
+            script = env_script + f'exec bash -c {shlex.quote(actual_cmd)}\n'
+            stdin_ch, stdout_ch, stderr_ch = session.client.exec_command('bash', timeout=timeout)
+            stdin_ch.write(script)
+            stdin_ch.channel.shutdown_write()
+        else:
+            _, stdout_ch, stderr_ch = session.client.exec_command(actual_cmd, timeout=timeout)
         stdout = stdout_ch.read().decode(errors='replace')
         stderr = stderr_ch.read().decode(errors='replace')
         exit_code = stdout_ch.channel.recv_exit_status()

@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 from mcp_remote_ssh.session import SSHSession
-from mcp_remote_ssh.server.execute import _build_env_prefix
+from mcp_remote_ssh.server.execute import _build_env_script
 
 
 class TestLongestFirstRedaction:
@@ -44,35 +44,34 @@ class TestLongestFirstRedaction:
         assert redacted == 'a=*** b=***'
 
 
-class TestEnvPrefixForExec:
-    """Verify _build_env_prefix generates correct export statements."""
+class TestEnvScriptForExec:
+    """Verify _build_env_script generates correct export statements."""
 
     def test_empty_when_no_secrets(self):
         session = SSHSession(host='test-host')
-        assert _build_env_prefix(session) == ''
+        assert _build_env_script(session) == ''
 
     def test_single_secret(self):
         session = SSHSession(host='test-host')
         session._secrets = {'TOKEN': 'abc123'}
-        prefix = _build_env_prefix(session)
-        assert 'export TOKEN=abc123' in prefix
-        assert prefix.endswith(' && ')
+        script = _build_env_script(session)
+        assert 'export TOKEN=abc123' in script
+        assert script.endswith('\n')
 
     def test_multiple_secrets(self):
         session = SSHSession(host='test-host')
         session._secrets = {'A': 'val1', 'B': 'val2'}
-        prefix = _build_env_prefix(session)
-        assert 'export A=val1' in prefix
-        assert 'export B=val2' in prefix
-        assert prefix.endswith(' && ')
+        script = _build_env_script(session)
+        assert 'export A=val1' in script
+        assert 'export B=val2' in script
+        assert '\n' in script
 
     def test_quotes_special_characters(self):
         session = SSHSession(host='test-host')
         session._secrets = {'PASS': "it's a p@ss!"}
-        prefix = _build_env_prefix(session)
-        # shlex.quote wraps with single quotes and escapes internal ones
-        assert 'PASS=' in prefix
-        assert "p@ss!" in prefix
+        script = _build_env_script(session)
+        assert 'PASS=' in script
+        assert "p@ss!" in script
 
 
 class TestShellInjectionSafety:

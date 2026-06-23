@@ -54,17 +54,17 @@ ssh_execute(session_id="abc", command="uname -a")
 
 1. **Local file read** -- the env file lives on your machine, never on the remote host
 2. **Shell injection via builtins** -- uses `read -r VAR <<< 'value' && export VAR` (no process tree exposure)
-3. **Automatic redaction** -- every tool response (`ssh_execute`, `ssh_shell_send`, `ssh_shell_read`, `ssh_read_remote_file`) is scrubbed before reaching the LLM
-4. **Longest-first matching** -- prevents partial-match corruption (e.g., `abc123` is replaced before `abc`)
-5. **Works with exec channels** -- secrets are prepended as exports to `ssh_execute` commands so they're available in stateless channels too
+3. **Stdin-based exec injection** -- `ssh_execute` feeds secrets via stdin to a bash wrapper, so they never appear in `/proc/*/cmdline`
+4. **Automatic redaction** -- every tool response (`ssh_execute`, `ssh_shell_send`, `ssh_shell_read`, `ssh_read_remote_file`) is scrubbed before reaching the LLM
+5. **Longest-first matching** -- prevents partial-match corruption (e.g., `abc123` is replaced before `abc`)
 
 ### Security properties
 
 | Threat | Mitigated? | How |
 |--------|-----------|-----|
 | Secret in LLM context window | Yes | Output redaction replaces values with `***` |
-| Secret in remote process tree | Yes | Shell builtins (`read`/`export`) don't fork |
-| Secret in `ssh_execute` process tree | Partial | Single short-lived process; use shell for zero-exposure |
+| Secret in remote process tree (shell) | Yes | Shell builtins (`read`/`export`) don't fork |
+| Secret in remote process tree (exec) | Yes | Secrets fed via stdin, never in `/proc/*/cmdline` |
 | LLM tries `cat` on the env file | N/A | File is local-only, doesn't exist on remote |
 | LLM tries `echo $VAR` | Yes | Output is redacted |
 | Encoded/transformed secret (base64) | No | Only literal matches are redacted |
@@ -177,6 +177,7 @@ ssh_forward_port(session_id="a1b2c3d4", remote_port=5432, local_port=15432)
 Built on **[Paramiko](https://www.paramiko.org/)** (SSH) + **[FastMCP](https://github.com/PrefectHQ/fastmcp)** (MCP protocol).
 
 - `ssh_execute` uses `exec_command()` for clean structured output with real exit codes
+- When secrets are loaded, `ssh_execute` feeds exports via stdin to a `bash` wrapper, then `exec`s the actual command -- secrets never appear in the process tree
 - `ssh_shell_*` uses `invoke_shell()` for persistent interactive sessions
 - All blocking Paramiko calls run in `run_in_executor` to stay async
 - Shell keeps a 500KB rolling buffer for `shell_read` polling
