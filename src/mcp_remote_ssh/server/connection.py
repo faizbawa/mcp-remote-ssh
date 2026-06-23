@@ -38,6 +38,10 @@ async def ssh_connect(
     """
     store = get_store(ctx)
     session = SSHSession(host=host, username=username, port=port)
+    # AutoAddPolicy: accepts unknown host keys without prompting. Intentional for
+    # QE/lab environments where hosts are ephemeral (Beaker, cloud instances, CI).
+    # MITM risk is accepted on trusted internal networks. For strict environments,
+    # a host_key_policy parameter could be added in the future.
     session.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # noqa: S507
 
     connect_kwargs: dict[str, Any] = {

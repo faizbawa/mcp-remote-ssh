@@ -68,6 +68,16 @@ ssh_execute(session_id="abc", command="uname -a")
 | LLM tries `cat` on the env file | N/A | File is local-only, doesn't exist on remote |
 | LLM tries `echo $VAR` | Yes | Output is redacted |
 | Encoded/transformed secret (base64) | No | Only literal matches are redacted |
+| MITM on first SSH connection | Accepted | `AutoAddPolicy` used — see note below |
+
+### Host key policy
+
+This server uses Paramiko's `AutoAddPolicy` — unknown host keys are accepted without prompting. This is intentional for QE/lab environments where hosts are ephemeral (Beaker, cloud instances, CI machines). The trade-off:
+
+- **Pro:** Zero-friction connections to newly provisioned machines
+- **Con:** Vulnerable to MITM on the very first connection to an unknown host
+
+If you operate on untrusted networks, consider wrapping connections through a VPN or SSH bastion with pre-distributed host keys. A `host_key_policy` parameter may be added in a future release for strict environments.
 
 ### Env file format
 
