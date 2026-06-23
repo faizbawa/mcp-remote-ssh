@@ -45,6 +45,15 @@ class SSHSession:
     _shell_buffer: str = field(default='', repr=False)
     _sftp: paramiko.SFTPClient | None = field(default=None, repr=False)
     _forwards: dict[str, PortForward] = field(default_factory=dict, repr=False)
+    _secrets: dict[str, str] = field(default_factory=dict, repr=False)
+
+    def redact(self, text: str) -> str:
+        """Replace any loaded secret values with '***' in the given text.
+        Processes longest values first to avoid partial-match corruption."""
+        for value in sorted(self._secrets.values(), key=len, reverse=True):
+            if value and value in text:
+                text = text.replace(value, '***')
+        return text
 
     @property
     def is_connected(self) -> bool:

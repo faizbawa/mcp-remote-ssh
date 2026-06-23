@@ -4,11 +4,82 @@
 [![Python](https://img.shields.io/pypi/pyversions/mcp-remote-ssh.svg)](https://pypi.org/project/mcp-remote-ssh/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-MCP server giving AI agents full SSH access -- persistent sessions, structured command output, SFTP file transfer, and port forwarding. Works with any SSH server on any platform.
+MCP server giving AI agents full SSH access -- persistent sessions, structured command output, SFTP file transfer, port forwarding, and **secret-safe environment variable injection with automatic output redaction**.
 
 ## Why this exists
 
-Every other SSH MCP server is missing something: no password auth, no persistent sessions, no SFTP, no port forwarding, or no structured exit codes. This one has all of them.
+Every other SSH MCP server is missing something: no password auth, no persistent sessions, no SFTP, no port forwarding, or no structured exit codes. This one has all of them -- plus the only MCP-level secret management that prevents AI agents from ever seeing your credentials.
+
+## Secret-Safe Environment Variables
+
+**The problem:** When an AI agent needs to use API tokens, passwords, or keys on a remote server, the standard approach exposes secrets in the LLM's context window. The agent either reads the secret file (now it's in the conversation) or runs `echo $TOKEN` and sees the value in the output.
+
+**The solution:** `ssh_load_env_file` reads secrets from a local file on your machine, injects them into the remote SSH session, and registers them for **automatic output redaction**. The AI agent can use the variables freely -- every tool response is scrubbed before it reaches the LLM.
+
+```text
+# Agent calls this -- file is read from YOUR machine, not the remote host
+ssh_load_env_file(session_id="abc", file_path="~/.secrets/prod.env")
+→ "Loaded 3 variables from local:~/.secrets/prod.env: API_TOKEN, DB_PASS, SECRET_KEY"
+
+# Agent tries to echo the value -- redacted automatically
+ssh_execute(session_id="abc", command="echo $API_TOKEN")
+→ {"stdout": "***\n", "exit_code": 0}
+
+# Agent dumps the environment -- all secret values scrubbed
+ssh_execute(session_id="abc", command="env | grep API_TOKEN")
+→ {"stdout": "API_TOKEN=***\n", "exit_code": 0}
+
+# Agent reads a file containing a secret -- also redacted
+ssh_read_remote_file(session_id="abc", remote_path="/etc/app/config")
+→ "db_password=***\ndb_host=localhost\n"
+
+# Normal commands work perfectly -- no over-redaction
+ssh_execute(session_id="abc", command="uname -a")
+→ {"stdout": "Linux server 6.1.0 ...", "exit_code": 0}
+```
+
+### How it works
+
+```
+┌─────────┐         ┌──────────────────────────────┐         ┌─────────────┐
+│   LLM   │ ←─JSON─ │   MCP Server (your machine)  │ ──SSH─→ │ Remote Host │
+│ (Agent) │         │                              │         │             │
+└─────────┘         │  1. Reads ~/.secrets/prod.env│         └─────────────┘
+                    │  2. Parses KEY=VALUE pairs   │
+                    │  3. Stores values in memory  │
+                    │  4. Injects into SSH session │
+                    │  5. Redacts ALL tool output  │
+                    └──────────────────────────────┘
+```
+
+1. **Local file read** -- the env file lives on your machine, never on the remote host
+2. **Shell injection via builtins** -- uses `read -r VAR <<< 'value' && export VAR` (no process tree exposure)
+3. **Automatic redaction** -- every tool response (`ssh_execute`, `ssh_shell_send`, `ssh_shell_read`, `ssh_read_remote_file`) is scrubbed before reaching the LLM
+4. **Longest-first matching** -- prevents partial-match corruption (e.g., `abc123` is replaced before `abc`)
+5. **Works with exec channels** -- secrets are prepended as exports to `ssh_execute` commands so they're available in stateless channels too
+
+### Security properties
+
+| Threat | Mitigated? | How |
+|--------|-----------|-----|
+| Secret in LLM context window | Yes | Output redaction replaces values with `***` |
+| Secret in remote process tree | Yes | Shell builtins (`read`/`export`) don't fork |
+| Secret in `ssh_execute` process tree | Partial | Single short-lived process; use shell for zero-exposure |
+| LLM tries `cat` on the env file | N/A | File is local-only, doesn't exist on remote |
+| LLM tries `echo $VAR` | Yes | Output is redacted |
+| Encoded/transformed secret (base64) | No | Only literal matches are redacted |
+
+### Env file format
+
+Standard `.env` format:
+
+```bash
+# Comments are ignored
+API_TOKEN=your-secret-token
+DB_PASSWORD="quoted values work"
+SECRET_KEY='single quotes too'
+export ALSO_WORKS=yes
+```
 
 ## Installation
 
@@ -29,7 +100,7 @@ uvx mcp-remote-ssh        # or: pip install mcp-remote-ssh
 }
 ```
 
-## Tools (18)
+## Tools (20)
 
 ### Connection
 
@@ -56,6 +127,13 @@ uvx mcp-remote-ssh        # or: pip install mcp-remote-ssh
 | `ssh_shell_send_control` | Send Ctrl+C, Ctrl+D, etc. |
 | `ssh_shell_wait` | Wait for a pattern or output to stabilize |
 
+### Secrets Management
+
+| Tool | Description |
+|------|-------------|
+| `ssh_load_env_file` | Load secrets from a local env file; values never returned to the LLM |
+| `ssh_clear_secrets` | Clear redaction registry (values become visible again) |
+
 ### SFTP
 
 | Tool | Description |
@@ -80,8 +158,11 @@ uvx mcp-remote-ssh        # or: pip install mcp-remote-ssh
 ssh_connect(host="server.example.com", username="admin", password="secret")
 → {"session_id": "a1b2c3d4", "connected": true}
 
-ssh_execute(session_id="a1b2c3d4", command="uname -a")
-→ {"stdout": "Linux ...", "stderr": "", "exit_code": 0}
+ssh_load_env_file(session_id="a1b2c3d4", file_path="~/.secrets/prod.env")
+→ "Loaded 2 variables: API_TOKEN, DB_PASS"
+
+ssh_execute(session_id="a1b2c3d4", command="curl -H \"Authorization: Bearer $API_TOKEN\" https://api.example.com")
+→ {"stdout": "{\"status\": \"ok\"}", "exit_code": 0}  # token used but never visible
 
 ssh_shell_open(session_id="a1b2c3d4")
 ssh_shell_send(session_id="a1b2c3d4", data="cd /opt && make -j$(nproc)")
@@ -99,6 +180,7 @@ Built on **[Paramiko](https://www.paramiko.org/)** (SSH) + **[FastMCP](https://g
 - `ssh_shell_*` uses `invoke_shell()` for persistent interactive sessions
 - All blocking Paramiko calls run in `run_in_executor` to stay async
 - Shell keeps a 500KB rolling buffer for `shell_read` polling
+- Secret redaction uses longest-first string replacement across all output paths
 
 ## License
 

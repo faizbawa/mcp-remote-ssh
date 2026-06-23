@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0 (unreleased)
+
+### Features
+
+- **Secret-safe environment variables** -- `ssh_load_env_file` reads secrets from a local `.env` file, injects them into the remote session via shell builtins (no process tree exposure), and registers values for automatic output redaction across all tools
+- **Automatic output redaction** -- all tool responses (`ssh_execute`, `ssh_shell_send`, `ssh_shell_read`, `ssh_read_remote_file`, etc.) are scrubbed of loaded secret values before reaching the LLM, replacing them with `***`
+- **Longest-first redaction** -- prevents partial-match corruption when one secret is a substring of another
+- **Exec channel injection** -- loaded secrets are automatically prepended as exports to `ssh_execute` commands, making them available even in stateless exec channels
+- **Shell auto-injection** -- if `ssh_shell_open` is called after secrets are loaded, they are automatically exported into the new shell
+- **`ssh_clear_secrets`** -- clear the redaction registry when secrets are no longer needed
+
 ## 0.1.0 (2026-03-17)
 
 Initial release.

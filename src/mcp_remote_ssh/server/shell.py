@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import shlex
 import time
 
 from fastmcp import Context
@@ -23,6 +24,8 @@ async def ssh_shell_open(
     across multiple send/read calls. Ideal for screen/tmux, long builds, etc.
 
     If a shell is already open, this is a no-op (returns existing shell info).
+    If secrets have been loaded via ssh_load_env_file, they are automatically
+    injected into the new shell.
 
     Args:
         session_id: The session ID returned by ssh_connect.
@@ -40,9 +43,19 @@ async def ssh_shell_open(
     await loop.run_in_executor(None, lambda: session.shell_open(term=term, width=width, height=height))
 
     await asyncio.sleep(0.5)
+
+    # If secrets were loaded before shell_open, inject them now
+    if session._secrets:
+        for key, value in session._secrets.items():
+            cmd = f'read -r {key} <<< {shlex.quote(value)} && export {key}\n'
+            await loop.run_in_executor(None, lambda c=cmd: session.shell_send(c))
+        await asyncio.sleep(0.5)
+        # Drain the injection output silently
+        await loop.run_in_executor(None, lambda: session.shell_read())
+
     initial = await loop.run_in_executor(None, lambda: session.shell_read_buffer(lines=20))
     logger.info(f'[{session_id}] Interactive shell opened')
-    return f'Shell opened on {session.host}.\n\n{initial}'
+    return f'Shell opened on {session.host}.\n\n{session.redact(initial)}'
 
 
 @mcp.tool()
@@ -78,7 +91,7 @@ async def ssh_shell_send(
         await asyncio.sleep(wait)
 
     output = await loop.run_in_executor(None, lambda: session.shell_read_buffer(lines=read_lines))
-    return output
+    return session.redact(output)
 
 
 @mcp.tool()
@@ -102,7 +115,7 @@ async def ssh_shell_read(
 
     loop = asyncio.get_running_loop()
     output = await loop.run_in_executor(None, lambda: session.shell_read_buffer(lines=lines))
-    return output
+    return session.redact(output)
 
 
 @mcp.tool()
@@ -135,7 +148,7 @@ async def ssh_shell_send_control(
 
     await asyncio.sleep(0.5)
     output = await loop.run_in_executor(None, lambda: session.shell_read_buffer(lines=30))
-    return f'Sent Ctrl+{key.upper()}\n\n{output}'
+    return f'Sent Ctrl+{key.upper()}\n\n{session.redact(output)}'
 
 
 @mcp.tool()
@@ -174,13 +187,13 @@ async def ssh_shell_wait(
         output = await loop.run_in_executor(None, lambda: session.shell_read_buffer(lines=lines))
 
         if pattern and pattern in output:
-            return output
+            return session.redact(output)
 
         if not pattern:
             if output == prev_output:
                 stable_count += 1
                 if stable_count >= 2:
-                    return output
+                    return session.redact(output)
             else:
                 stable_count = 0
             prev_output = output
@@ -188,5 +201,5 @@ async def ssh_shell_wait(
     elapsed = int(time.monotonic() - start)
     output = await loop.run_in_executor(None, lambda: session.shell_read_buffer(lines=lines))
     if pattern:
-        return f'Timeout after {elapsed}s waiting for pattern "{pattern}". Latest output:\n\n{output}'
-    return f'Timeout after {elapsed}s (output may still be changing). Latest output:\n\n{output}'
+        return f'Timeout after {elapsed}s waiting for pattern "{pattern}". Latest output:\n\n{session.redact(output)}'
+    return f'Timeout after {elapsed}s (output may still be changing). Latest output:\n\n{session.redact(output)}'

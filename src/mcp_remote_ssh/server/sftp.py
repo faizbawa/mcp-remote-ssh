@@ -109,7 +109,7 @@ async def ssh_read_remote_file(
         return data
 
     content = await loop.run_in_executor(None, _read)
-    return content
+    return session.redact(content)
 
 
 @mcp.tool()
