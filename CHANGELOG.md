@@ -1,10 +1,16 @@
 # Changelog
 
+## 0.2.2 (2026-06-23)
+
+### Fixes
+
+- Removed `License :: OSI Approved :: MIT License` classifier that conflicts with PEP 639 `license` field — PyPI reads license from `license = "MIT"` directly
+
 ## 0.2.1 (2026-06-23)
 
 ### Fixes
 
-- Added explicit `License :: OSI Approved :: MIT License` classifier for proper PyPI metadata display
+- (yanked) Attempted license classifier — breaks build under PEP 639
 
 ## 0.2.0 (2026-06-23)
 
