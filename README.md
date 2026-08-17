@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/mcp-remote-ssh.svg)](https://pypi.org/project/mcp-remote-ssh/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-MCP server giving AI agents full SSH access -- persistent sessions, structured command output, SFTP file transfer, port forwarding, and **secret-safe environment variable injection with automatic output redaction**.
+MCP server giving AI agents full SSH access -- persistent sessions, structured command output, SFTP file transfer, port forwarding, session transcript recording, and **secret-safe environment variable injection with automatic output redaction**.
 
 ## Why this exists
 
@@ -91,6 +91,27 @@ SECRET_KEY='single quotes too'
 export ALSO_WORKS=yes
 ```
 
+## Session transcripts
+
+Recording is **off by default**. Enable it per session when you need an audit log of what the agent actually ran — useful for bug reproductions and test campaigns.
+
+```text
+# Start recording on connect
+ssh_connect(host="lab.example.com", username="root", password="...", record=True)
+
+# Or toggle later
+ssh_start_recording(session_id="a1b2c3d4")
+ssh_execute(session_id="a1b2c3d4", command="uname -a")
+ssh_get_transcript(session_id="a1b2c3d4")
+→ {"recording": true, "total_entries": 2, "transcript": "[12:01:02] --- connect: lab.example.com ---\n[12:01:05] $ uname -a\nLinux ...\n[exit 0]"}
+
+ssh_save_transcript(session_id="a1b2c3d4", path="/tmp/lab-session.log")
+ssh_stop_recording(session_id="a1b2c3d4")
+```
+
+- Execute/sudo **output** and shell send/read I/O are secret-redacted before they are recorded
+- Closing the session discards the in-memory transcript — `ssh_save_transcript` or `ssh_get_transcript` first
+
 ## Installation
 
 ```bash
@@ -110,13 +131,13 @@ uvx mcp-remote-ssh        # or: pip install mcp-remote-ssh
 }
 ```
 
-## Tools (20)
+## Tools (24)
 
 ### Connection
 
 | Tool | Description |
 |------|-------------|
-| `ssh_connect` | Connect with password, key, or agent auth. Returns `session_id` |
+| `ssh_connect` | Connect with password, key, or agent auth. Optional `record=True` to start a transcript immediately. Returns `session_id` |
 | `ssh_list_sessions` | List active sessions |
 | `ssh_close_session` | Close a session and release resources |
 
@@ -144,6 +165,15 @@ uvx mcp-remote-ssh        # or: pip install mcp-remote-ssh
 | `ssh_load_env_file` | Load secrets from a local env file; values never returned to the LLM |
 | `ssh_clear_secrets` | Clear redaction registry (values become visible again) |
 
+### Transcripts
+
+| Tool | Description |
+|------|-------------|
+| `ssh_start_recording` | Start recording execute/sudo/shell I/O for this session |
+| `ssh_stop_recording` | Stop recording; transcript stays available until the session is closed |
+| `ssh_get_transcript` | Return the transcript as text or JSONL (`last_n` optional) |
+| `ssh_save_transcript` | Write the transcript to a **local** file on the MCP host |
+
 ### SFTP
 
 | Tool | Description |
@@ -165,8 +195,8 @@ uvx mcp-remote-ssh        # or: pip install mcp-remote-ssh
 ## Quick start
 
 ```text
-ssh_connect(host="server.example.com", username="admin", password="secret")
-→ {"session_id": "a1b2c3d4", "connected": true}
+ssh_connect(host="server.example.com", username="admin", password="secret", record=True)
+→ {"session_id": "a1b2c3d4", "connected": true, "recording": true}
 
 ssh_load_env_file(session_id="a1b2c3d4", file_path="~/.secrets/prod.env")
 → "Loaded 2 variables: API_TOKEN, DB_PASS"
@@ -192,6 +222,7 @@ Built on **[Paramiko](https://www.paramiko.org/)** (SSH) + **[FastMCP](https://g
 - All blocking Paramiko calls run in `run_in_executor` to stay async
 - Shell keeps a 500KB rolling buffer for `shell_read` polling
 - Secret redaction uses longest-first string replacement across all output paths
+- Session transcripts are in-memory, off by default, and discarded when the session is closed
 
 ## License
 

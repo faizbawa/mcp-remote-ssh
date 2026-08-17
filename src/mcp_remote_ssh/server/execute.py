@@ -68,6 +68,14 @@ async def ssh_execute(
     logger.debug(f'[{session_id}] exec exit={result["exit_code"]}: {command[:80]}')
     result['stdout'] = session.redact(result['stdout'])
     result['stderr'] = session.redact(result['stderr'])
+    if session.transcript.enabled:
+        session.transcript.record(
+            'execute',
+            command=command,
+            stdout=result['stdout'],
+            stderr=result['stderr'],
+            exit_code=result['exit_code'],
+        )
     return result
 
 
@@ -123,6 +131,14 @@ async def ssh_sudo_execute(
     logger.debug(f'[{session_id}] sudo exec exit={result["exit_code"]}: {command[:80]}')
     result['stdout'] = session.redact(result['stdout'])
     result['stderr'] = session.redact(result['stderr'])
+    if session.transcript.enabled:
+        session.transcript.record(
+            'execute',
+            command=f'sudo {command}',
+            stdout=result['stdout'],
+            stderr=result['stderr'],
+            exit_code=result['exit_code'],
+        )
     return result
 
 

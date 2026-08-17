@@ -4,7 +4,8 @@
 
 | Version | Supported |
 |---------|-----------|
-| 0.3.x   | Yes       |
+| 0.4.x   | Yes       |
+| 0.3.x   | Security fixes only |
 | 0.2.x   | Security fixes only |
 | < 0.2   | No        |
 
@@ -36,6 +37,7 @@ This MCP server provides SSH access to remote hosts for AI agents. The security 
 - Redaction is literal-match only — encoding/transformation attacks (base64, rev, hex) bypass it
 - `AutoAddPolicy` is used for SSH host keys (accepts unknown hosts without verification) — intentional for ephemeral lab environments
 - An adversarial LLM that deliberately tries to exfiltrate secrets is out of scope for MCP-layer defenses
+- Session transcripts are returned to the LLM via `ssh_get_transcript`. Loaded secret values are redacted in recorded execute/sudo output and shell I/O; encoding/transformation still bypasses redaction. Closing the session discards the transcript — save with `ssh_save_transcript` first
 
 ## Dependencies
 

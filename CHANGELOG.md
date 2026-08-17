@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.0 (2026-08-17)
+
+### Features
+
+- **Session transcript recording** -- `ssh_start_recording` / `ssh_stop_recording` capture execute, sudo, and interactive-shell I/O for a session; `ssh_get_transcript` returns text or JSONL; `ssh_save_transcript` writes a local file on the MCP host
+- **`record=True` on `ssh_connect`** -- start recording immediately, including a `connect` event
+- Session summaries now include `recording` and `transcript_entries`
+- Execute/sudo stdout and stderr, and shell send/read I/O, are redacted **before** they are written to the transcript
+
+### Notes
+
+- Recording is off by default. Closing a session discards the in-memory transcript — save or retrieve it first
+- Loaded secret values are redacted in execute/sudo output **and** in recorded shell send/read I/O before they are stored
+
 ## 0.3.0 (2026-06-23)
 
 ### Features

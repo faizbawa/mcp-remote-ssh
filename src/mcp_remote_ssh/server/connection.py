@@ -21,6 +21,7 @@ async def ssh_connect(
     key_path: str = '',
     port: int = 22,
     timeout: int = 60,
+    record: bool = False,
 ) -> dict[str, Any]:
     """Connect to a remote host via SSH. Returns a session_id for use with all
     other tools. Supports password and key-based authentication.
@@ -32,6 +33,7 @@ async def ssh_connect(
         key_path: Path to SSH private key file. Leave empty for password auth.
         port: SSH port (default: 22).
         timeout: Connection timeout in seconds (default: 60).
+        record: Start transcript recording immediately on connect (default: False).
 
     Returns:
         Session info dict with session_id, host, and connection status.
@@ -64,6 +66,10 @@ async def ssh_connect(
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, lambda: session.client.connect(**connect_kwargs))
 
+    if record:
+        session.transcript.enabled = True
+        session.transcript.record('connect', host=host, username=username, port=port)
+
     await store.add(session)
     logger.info(f'Connected to {username}@{host}:{port} as session {session.session_id}')
     return session.summary()
@@ -93,6 +99,8 @@ async def ssh_close_session(ctx: Context, session_id: str) -> str:
     """
     store = get_store(ctx)
     session = get_session(ctx, session_id)
+    if session.transcript.enabled:
+        session.transcript.record('disconnect', host=session.host, entries=len(session.transcript.entries))
     errors = session.close()
     await store.remove(session_id)
     logger.info(f'Closed session {session_id} to {session.host}')

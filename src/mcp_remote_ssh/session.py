@@ -1,15 +1,89 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import socket
 import threading
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import paramiko
 from loguru import logger
+
+
+@dataclass
+class TranscriptEntry:
+    """A single recorded event in a session transcript."""
+
+    timestamp: float = field(default_factory=time.time)
+    event: str = ''
+    data: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            'timestamp': self.timestamp,
+            'time': datetime.fromtimestamp(self.timestamp, tz=timezone.utc).isoformat(),
+            'event': self.event,
+            'data': self.data,
+        }
+
+    def to_text(self) -> str:
+        ts = datetime.fromtimestamp(self.timestamp, tz=timezone.utc).strftime('%H:%M:%S')
+        if self.event == 'execute':
+            cmd = self.data.get('command', '')
+            exit_code = self.data.get('exit_code', '?')
+            stdout = self.data.get('stdout', '')
+            stderr = self.data.get('stderr', '')
+            lines = [f'[{ts}] $ {cmd}']
+            if stdout:
+                lines.append(stdout.rstrip())
+            if stderr:
+                lines.append(f'(stderr) {stderr.rstrip()}')
+            lines.append(f'[exit {exit_code}]')
+            return '\n'.join(lines)
+        if self.event == 'shell_send':
+            return f'[{ts}] >> {self.data.get("input", "").rstrip()}'
+        if self.event == 'shell_read':
+            return f'[{ts}] {self.data.get("output", "").rstrip()}'
+        if self.event in ('connect', 'disconnect'):
+            return f'[{ts}] --- {self.event}: {self.data.get("host", "")} ---'
+        return f'[{ts}] {self.event}: {self.data}'
+
+
+class Transcript:
+    """Records session I/O for later retrieval or export."""
+
+    def __init__(self) -> None:
+        self.enabled: bool = False
+        self.entries: list[TranscriptEntry] = []
+
+    def record(self, event: str, **data: Any) -> None:
+        if not self.enabled:
+            return
+        self.entries.append(TranscriptEntry(event=event, data=data))
+
+    def to_text(self) -> str:
+        return '\n'.join(e.to_text() for e in self.entries)
+
+    def to_jsonl(self) -> str:
+        return '\n'.join(json.dumps(e.to_dict()) for e in self.entries)
+
+    def save(self, path: str, fmt: str = 'text') -> int:
+        """Write transcript to a local file. Returns entry count."""
+        p = Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        content = self.to_text() if fmt == 'text' else self.to_jsonl()
+        p.write_text(content + '\n', encoding='utf-8')
+        return len(self.entries)
+
+    def clear(self) -> int:
+        count = len(self.entries)
+        self.entries.clear()
+        return count
 
 
 @dataclass
@@ -46,6 +120,7 @@ class SSHSession:
     _sftp: paramiko.SFTPClient | None = field(default=None, repr=False)
     _forwards: dict[str, PortForward] = field(default_factory=dict, repr=False)
     _secrets: dict[str, str] = field(default_factory=dict, repr=False)
+    transcript: Transcript = field(default_factory=Transcript, repr=False)
 
     def redact(self, text: str) -> str:
         """Replace any loaded secret values with '***' in the given text.
@@ -82,6 +157,8 @@ class SSHSession:
             msg = 'No interactive shell open. Call shell_open first.'
             raise RuntimeError(msg)
         self._shell_channel.sendall(data.encode())
+        if self.transcript.enabled:
+            self.transcript.record('shell_send', input=self.redact(data))
 
     def shell_read(self, max_bytes: int = 65536) -> str:
         if not self.has_shell:
@@ -99,6 +176,8 @@ class SSHSession:
         self._shell_buffer += new_data
         if len(self._shell_buffer) > 500_000:
             self._shell_buffer = self._shell_buffer[-500_000:]
+        if new_data and self.transcript.enabled:
+            self.transcript.record('shell_read', output=self.redact(new_data))
         return new_data
 
     def shell_read_buffer(self, lines: int = 100) -> str:
@@ -118,6 +197,8 @@ class SSHSession:
             'shell_open': self.has_shell,
             'uptime_seconds': uptime,
             'active_forwards': len(self._forwards),
+            'recording': self.transcript.enabled,
+            'transcript_entries': len(self.transcript.entries),
         }
 
     def close(self) -> list[str]:
@@ -174,7 +255,9 @@ class SessionStore:
         session = self._sessions.get(session_id)
         if session is None:
             available = ', '.join(self._sessions.keys()) or 'none'
-            msg = f'Session not found: {session_id}. Active sessions: {available}. Use ssh_list_sessions to see details.'
+            msg = (
+                f'Session not found: {session_id}. Active sessions: {available}. Use ssh_list_sessions to see details.'
+            )
             raise ValueError(msg)
         return session
 
